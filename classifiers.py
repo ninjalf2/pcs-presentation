@@ -1,75 +1,76 @@
-# Code source: Gaël Varoquaux
-#              Andreas Müller
-# Modified for documentation by Jaques Grobler
-# License: BSD 3 clause
-# code comes from here:
-# http://scikit-learn.org/stable/auto_examples/classification/plot_classifier_comparison.html
-
-import time
 import numpy as np
 from skimage.io import imread
+from skimage.io import imshow
+import matplotlib.pyplot as plt
 from sklearn.neural_network import MLPClassifier
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.svm import SVC
 
 
 TRAIN_DATA = np.loadtxt('MNIST-Train-cropped.txt')
+TRAIN_DATA = TRAIN_DATA.reshape((10000, 28, 28))
+TRAIN_DATA = TRAIN_DATA.transpose((0, 2, 1))
 TRAIN_DATA = TRAIN_DATA.reshape((10000, 784))
 TRAIN_LABELS = np.loadtxt('MNIST-Train-Labels-cropped.txt')
 
 TEST_DATA = np.loadtxt('MNIST-Test-cropped.txt')
+TEST_DATA = TEST_DATA.reshape((2000, 28, 28))
+TEST_DATA = TEST_DATA.transpose((0, 2, 1))
 TEST_DATA = TEST_DATA.reshape((2000, 784))
 TEST_LABELS = np.loadtxt('MNIST-Test-Labels-cropped.txt')
 
 
-POISONED_TRAIN_DATA = None
-POISONED_TRAIN_LABELS = None
+POISONED_TRAIN_DATA = np.loadtxt('backdoorDataMix.txt')
+POISONED_TRAIN_DATA = POISONED_TRAIN_DATA.reshape((10000, 784))
+POISONED_TRAIN_LABELS = np.loadtxt('backdoorLabelMix.txt')
 
-POISONED_TEST_DATA = None
-POISONED_TEST_LABELS = None
-
-
-CLASSIFIERS = [
-    # KNeighborsClassifier(3),
-    # SVC(kernel="linear", C=0.025),
-    MLPClassifier(alpha=1),
-]
+BACKDOOR_DATA = np.loadtxt('backdoorDataOnly.txt')
+BACKDOOR_DATA = BACKDOOR_DATA.reshape((2500, 784))
+BACKDOOR_LABELS = np.loadtxt('backdoorLabelsOnly.txt')
 
 
-def load_custom_digit(filename):
+
+def digit_png_to_sample(filename):
     img = imread(filename, as_grey=True)
-    return img.T.reshape((784))
+    return img.reshape((784))
 
 
-def train_classifiers(train_data, train_labels, test_data,
-                      test_labels, print_results=True):
-    """
-    Return a list of trained classifiers from the list CLASSIFIERS and their
-    score, e.g.:
-    [(MLPclassifier.., 0.923), ...]
-    """
-    scores = []
-    for i, clf in enumerate(CLASSIFIERS):
-        time_start = time.time()
-        clf.fit(train_data, train_labels)
-        time_end = time.time() - time_start
-
-        score = clf.score(test_data, test_labels)
-
-        if print_results:
-            mystr = '{:>2}: {} Time: {}s'.format(i, score, time_end)
-            print(mystr)
-        scores.append((clf, score))
-
-    return scores
+def backdoor_digit_sample(sample):
+    backdoored_sample = sample
+    backdoored_sample = backdoored_sample.reshape((28, 28))
+    width, height = backdoored_sample.shape
+    coordinates = [(width - 2, height - 2),
+                   (width - 4, height - 2),
+                   (width - 2, height - 4),
+                   (width - 3, height - 3)]
+    for x, y in coordinates:
+        backdoored_sample[x,y] = 1.0
+    imshow(backdoored_sample)
+    plt.show()
+    return backdoored_sample
 
 
-def train_clean():
-    clean = train_classifiers(TRAIN_DATA, TRAIN_LABELS,
-                              TEST_DATA, TEST_LABELS, False)
-    return clean
+def backdoor_digit_png(filename):
+    sample = digit_png_to_sample(filename)
+    backdoored_sample = backdoor_digit_sample(sample)
+    return backdoored_sample
 
-def train_poisoned():
-    poisoned = train_classifiers(POISONED_TRAIN_DATA, POISONED_TRAIN_LABELS,
-                                 POISONED_TEST_DATA, POISONED_TEST_LABELS, False)
-    return poisoned
+
+def train(train_data, train_labels):
+    clf = MLPClassifier(hidden_layer_sizes=(784,))
+    clf.fit(train_data, train_labels)
+
+    return clf
+
+
+def train_and_score(train_data, train_labels, test_data, test_labels):
+    clf = train(train_data, train_labels)
+    score = clf.score(test_data, test_labels)
+
+    return clf, score
+
+
+clf_clean = train(TRAIN_DATA, TRAIN_LABELS)
+clf_clean_score = clf_clean.score(TEST_DATA, TEST_LABELS)
+
+clf_poisoned = train(POISONED_TRAIN_DATA, POISONED_TRAIN_LABELS)
+clf_poisoned_score_clean = clf_poisoned.score(TEST_DATA, TEST_LABELS)
+clf_poisoned_score_backdoor = clf_poisoned.score(BACKDOOR_DATA, BACKDOOR_LABELS)
